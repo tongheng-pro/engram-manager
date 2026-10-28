@@ -50,3 +50,4 @@ Then follow the **Guide** tab:
 
 The launcher path is saved inside the Codex and Gemini settings. If you move this app's folder, click **Install / update** again.
 # engram-manager
+# engram-manager
