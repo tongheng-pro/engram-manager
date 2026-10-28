@@ -34,12 +34,12 @@ GUIDE = """
 Engram gives your AI coding tools a memory per project: decisions, gotchas, your preferences and setup steps. This app connects projects to it and lets you read and edit the memories. Nothing is written into your project folders.
 
 ## 1. First time on this computer (Settings tab)
-1. Install Engram (link at the bottom of Settings) and the AI tools you use: Claude Code, Codex and/or Gemini CLI.
-2. Click `Detect programs`, then `Test`. Both lines should say OK (claude may be missing if you only use Codex or Gemini).
+1. Install Engram (link at the bottom of Settings) and the AI tools you use: Claude Code, Codex, Gemini CLI and/or Antigravity.
+2. Click `Detect programs`, then `Test`. Both lines should say OK (claude may be missing if you only use Codex, Gemini or Antigravity).
 3. Memory root folder: where every project's memories go. Default `Documents/engram`. Use a synced folder (OneDrive, Google Drive) to share between computers.
 4. Click `Save`.
 5. Under AI tools:
-   - Codex / Gemini CLI: click `Install / update` once.
+   - Codex / Gemini CLI / Antigravity: click `Install / update` once. (Antigravity is the `agy` program; it does not use the Gemini CLI row.)
    - Every tool you use: click `Memory instructions on/off` so it says "instructions on". This tells the tool to search memory before a task and save after.
 
 ## 2. Connect a project (Projects tab)
@@ -47,10 +47,10 @@ Engram gives your AI coding tools a memory per project: decisions, gotchas, your
 2. The memory folder name defaults to the project folder name:
    - "Old project": a memory folder with that name exists and is reused.
    - "New project": an empty one is created.
-3. Tick the tools to use (Claude Code is set per folder; Codex and Gemini use the global setting from step 1) and click `Connect`.
+3. Tick the tools to use (Claude Code is set per folder; Codex, Gemini and Antigravity use the global setting from step 1) and click `Connect`.
 4. Restart the tool in that folder:
    - Claude Code in VS Code: Ctrl+Shift+P → `Developer: Reload Window`, then type `/mcp` → engram should be connected.
-   - Codex / Gemini: close and start again in the project folder, then type `/mcp` to see engram.
+   - Codex / Gemini / Antigravity: close and start again in the project folder, then type `/mcp` to see engram.
 
 ## 3. Working with memory (in Claude, Codex or Gemini)
 - Just work: the tool searches memory before a task and saves what matters after.
@@ -72,7 +72,7 @@ Pick the memory folder and project. Search, read, `+ Add memory…`, `Delete` wr
 
 ## Problems
 - Tool doesn't show engram: restart it in the project folder; check Settings → AI tools says "Engram installed".
-- Codex/Gemini use the wrong memories: they must be started inside the project folder. Each start is logged in `~/.engram-manager-mcp.log` (folder → project).
+- Codex/Gemini/Antigravity use the wrong memories: they must be started inside the project folder. Each start is logged in `~/.engram-manager-mcp.log` (folder → project).
 - Moved or renamed a project folder: connect it again with the same memory folder name.
 - Changes to tool settings are backed up next to the file as `.bak`.
 """
@@ -243,17 +243,21 @@ class Claude:
             pass  # not connected
 
 
-# ─── Codex and Gemini CLI (one global setting that starts engram_mcp.py) ─────
+# ─── Codex, Gemini CLI and Antigravity (one global setting that starts engram_mcp.py) ─
 
 CODEX_CONFIG = HOME / ".codex" / "config.toml"
 GEMINI_CONFIG = HOME / ".gemini" / "settings.json"
-# Global instruction files each tool reads in every project
+# Antigravity (agy) keeps its MCP servers here, not in Gemini CLI's settings.json
+ANTIGRAVITY_CONFIG = HOME / ".gemini" / "config" / "mcp_config.json"
+# Global instruction files each tool reads in every project (Antigravity shares GEMINI.md with Gemini CLI)
 INSTRUCTION_FILES = {
     "claude": HOME / ".claude" / "CLAUDE.md",
     "codex": HOME / ".codex" / "AGENTS.md",
     "gemini": HOME / ".gemini" / "GEMINI.md",
+    "antigravity": HOME / ".gemini" / "GEMINI.md",
 }
-TOOL_LABELS = {"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI"}
+TOOL_LABELS = {"claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "antigravity": "Antigravity"}
+ALL_TOOLS = ("claude", "codex", "gemini", "antigravity")
 INSTRUCTIONS_START = "<!-- engram-manager:start -->"
 INSTRUCTIONS_END = "<!-- engram-manager:end -->"
 INSTRUCTIONS = """## Engram memory
@@ -317,41 +321,50 @@ def remove_codex():
         CODEX_CONFIG.write_text(without_codex_engram(CODEX_CONFIG.read_text(encoding="utf-8")), encoding="utf-8")
 
 
-def read_gemini_settings():
-    if not GEMINI_CONFIG.is_file():
+def read_json_settings(path):
+    if not path.is_file():
         return {}
     try:
-        return json.loads(GEMINI_CONFIG.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except ValueError:
-        raise CommandError("Cannot read %s (not plain JSON). Add the engram server by hand." % GEMINI_CONFIG)
+        raise CommandError("Cannot read %s (not plain JSON). Add the engram server by hand." % path)
+
+
+def json_installed(path):
+    """True only when the engram entry starts engram_mcp.py (a plain `engram mcp` entry ignores projects)."""
+    try:
+        entry = (read_json_settings(path).get("mcpServers") or {}).get("engram") or {}
+    except CommandError:
+        return False
+    return any(str(arg).endswith("engram_mcp.py") for arg in entry.get("args") or [])
+
+
+def install_json(path):
+    settings = read_json_settings(path)
+    command = launcher_command()
+    settings.setdefault("mcpServers", {})["engram"] = {"command": command[0], "args": command[1:]}
+    backup(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+
+def remove_json(path):
+    settings = read_json_settings(path)
+    if (settings.get("mcpServers") or {}).pop("engram", None) is not None:
+        backup(path)
+        path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
 
 
 def gemini_installed():
-    try:
-        return "engram" in (read_gemini_settings().get("mcpServers") or {})
-    except CommandError:
-        return False
-
-
-def install_gemini():
-    settings = read_gemini_settings()
-    command = launcher_command()
-    settings.setdefault("mcpServers", {})["engram"] = {"command": command[0], "args": command[1:]}
-    backup(GEMINI_CONFIG)
-    GEMINI_CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    GEMINI_CONFIG.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-
-
-def remove_gemini():
-    settings = read_gemini_settings()
-    if (settings.get("mcpServers") or {}).pop("engram", None) is not None:
-        backup(GEMINI_CONFIG)
-        GEMINI_CONFIG.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    return json_installed(GEMINI_CONFIG)
 
 
 GLOBAL_TOOLS = {
     "codex": (codex_installed, install_codex, remove_codex, CODEX_CONFIG),
-    "gemini": (gemini_installed, install_gemini, remove_gemini, GEMINI_CONFIG),
+    "gemini": (gemini_installed, lambda: install_json(GEMINI_CONFIG), lambda: remove_json(GEMINI_CONFIG),
+               GEMINI_CONFIG),
+    "antigravity": (lambda: json_installed(ANTIGRAVITY_CONFIG), lambda: install_json(ANTIGRAVITY_CONFIG),
+                    lambda: remove_json(ANTIGRAVITY_CONFIG), ANTIGRAVITY_CONFIG),
 }
 
 
@@ -850,13 +863,14 @@ class App(tk.Tk):
 
         tools = ttk.LabelFrame(tab, text="AI tools", padding=10)
         tools.grid(row=9, column=0, columnspan=3, sticky="ew")
-        ttk.Label(tools, text="Claude Code is connected per project (Projects tab). Codex and Gemini CLI have one "
-                              "global setting: it starts engram_mcp.py, which picks the memory folder from the "
-                              "project folder you open. Memory instructions tell the tool to search and save "
-                              "memories (added to its global CLAUDE.md / AGENTS.md / GEMINI.md).",
+        ttk.Label(tools, text="Claude Code is connected per project (Projects tab). Codex, Gemini CLI and "
+                              "Antigravity have one global setting: it starts engram_mcp.py, which picks the memory "
+                              "folder from the project folder you open. Memory instructions tell the tool to search "
+                              "and save memories (added to its global CLAUDE.md / AGENTS.md / GEMINI.md; Gemini CLI "
+                              "and Antigravity share GEMINI.md).",
                   style="Hint.TLabel", wraplength=920).grid(row=0, column=0, columnspan=5, sticky="w", pady=(0, 8))
         self.tool_status = {}
-        for row, tool in enumerate(("claude", "codex", "gemini"), start=1):
+        for row, tool in enumerate(ALL_TOOLS, start=1):
             ttk.Label(tools, text=TOOL_LABELS[tool], width=12).grid(row=row, column=0, sticky="w", pady=3)
             self.tool_status[tool] = tk.StringVar()
             ttk.Label(tools, textvariable=self.tool_status[tool]).grid(row=row, column=1, sticky="w")
@@ -1010,12 +1024,13 @@ class ConnectDialog(Dialog):
         defaults = {
             "claude": bool(app.config_data.get("claude_path") or shutil.which("claude")),
             "codex": codex_installed() or CODEX_CONFIG.parent.is_dir(),
-            "gemini": gemini_installed() or GEMINI_CONFIG.parent.is_dir(),
+            "gemini": gemini_installed() or bool(shutil.which("gemini")),
+            "antigravity": GLOBAL_TOOLS["antigravity"][0]() or (HOME / ".gemini" / "antigravity").is_dir(),
         }
         notes = {"claude": "this folder only", "codex": "global setting, picks this folder",
-                 "gemini": "global setting, picks this folder"}
+                 "gemini": "global setting, picks this folder", "antigravity": "global setting, picks this folder"}
         self.tool_vars = {}
-        for tool in ("claude", "codex", "gemini"):
+        for tool in ALL_TOOLS:
             self.tool_vars[tool] = tk.BooleanVar(value=defaults[tool])
             ttk.Checkbutton(tools, text="%s  (%s)" % (TOOL_LABELS[tool], notes[tool]),
                             variable=self.tool_vars[tool]).pack(anchor="w")

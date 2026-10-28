@@ -1,7 +1,7 @@
 # Engram Manager
 
 A small desktop app (Windows and Ubuntu) for [Engram](https://github.com/Gentleman-Programming/engram), memory for AI coding tools.
-It works with **Claude Code**, **Codex** and **Gemini CLI**.
+It works with **Claude Code**, **Codex**, **Gemini CLI** and **Antigravity** (`agy`).
 
 - **Connect a project:** its memories go in their own folder, by default `Documents/engram/<project>`.
   - Old projects reuse their existing memory folder.
@@ -18,6 +18,7 @@ It works with **Claude Code**, **Codex** and **Gemini CLI**.
 | Claude Code | Claude's private "local" setting per folder, in `~/.claude.json` | One setting per project folder |
 | Codex | One `[mcp_servers.engram]` entry in `~/.codex/config.toml` | `engram_mcp.py` matches the folder Codex runs in (or a subfolder) to a connected project |
 | Gemini CLI | One `mcpServers.engram` entry in `~/.gemini/settings.json` | Same as Codex |
+| Antigravity | One `mcpServers.engram` entry in `~/.gemini/config/mcp_config.json` | Same as Codex |
 
 - The app's settings and the list of connected projects are in `~/.engram-manager.json`.
 - Tool config files are backed up as `.bak` before each change.
@@ -29,7 +30,7 @@ It works with **Claude Code**, **Codex** and **Gemini CLI**.
 | --- | --- | --- |
 | Python 3.8+ | [python.org](https://www.python.org/downloads/) (includes Tkinter) | `sudo apt install python3 python3-tk` (and `zenity`, normally installed) |
 | Engram | [Releases](https://github.com/Gentleman-Programming/engram/releases), or `go install github.com/Gentleman-Programming/engram/v3/cmd/engram@latest` | same |
-| AI tool | Claude Code, Codex and/or Gemini CLI | same |
+| AI tool | Claude Code, Codex, Gemini CLI and/or Antigravity | same |
 
 No `pip install` is needed.
 
@@ -44,11 +45,11 @@ run.bat           # Windows (double-click)
 
 Then follow the **Guide** tab:
 1. **Settings:** click **Detect programs** → **Test** → **Save**.
-2. **AI tools:** for Codex or Gemini, click **Install / update**. For each tool you use, click **Memory instructions on/off**.
+2. **AI tools:** for Codex, Gemini CLI or Antigravity, click **Install / update**. For each tool you use, click **Memory instructions on/off**.
 3. **Projects:** click **+ Connect a project…**, pick the folder, tick the tools, then click **Connect**.
 4. **Restart the tool** in that folder and type `/mcp` to check that `engram` is listed.
 
-The launcher path is saved inside the Codex and Gemini settings. If you move this app's folder, click **Install / update** again.
+The launcher path is saved inside the Codex, Gemini CLI and Antigravity settings. If you move this app's folder, click **Install / update** again.
 # engram-manager
 # engram-manager
 "# engram-manager" 
